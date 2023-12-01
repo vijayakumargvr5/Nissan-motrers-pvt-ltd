@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  ApplicationName:
+    Description: Provide the short name of the Application
+    Type: String
+    MinLength: 3
+    MaxLength: 20
+    Default: 'nfsac360'
+  EnvironmentType:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+    MinLength: 2
+    MaxLength: 4
+    AllowedValues:
+      - dev
+      - dev1
+      - dev2
+      - qa
+      - qa1
+      - qa2
+      - stg
+      - stg1
+      - stg2
+      - prod
+      - tcat
+    Default: 'dev'
+ 
+Mappings:
+  'Fn::Transform':
+    Name: 'AWS::Include'
+    Parameters:
+      Location: !Sub s3://nissan-${AWS::AccountId}-${AWS::Region}-app-infra-mapping/${ApplicationName}/parameters.yaml
+ 
+Conditions:
+  ForProd: !Equals [!Ref EnvironmentType, 'prod']
+ 
+Resources:
+## Creates S3 Bucket for Data Ingestion ## Refer this document for each parameter description and value expected
+  S3nfs360bucket:
+    Type: 'AWS::ServiceCatalog::CloudFormationProvisionedProduct'
+    Properties:
+      ProductName: S3
+      ProvisionedProductName: !Sub '${ApplicationName}-${EnvironmentType}-s3-bucket'
+      ProvisioningArtifactName: '8.0'
+      ProvisioningParameters:
+        - Key: EnvironmentName
+          Value: !If
+            - ForProd
+            - !Ref ApplicationName
+            - !Sub '${ApplicationName}-${EnvironmentType}'
+        - Key: BucketName
+          Value: !Join
+            - '-'
+            -
+              - nissan
+              - ne
+              - !Ref ApplicationName
+              - !If
+                 - ForProd
+                 - !Ref AWS::NoValue
+                 - !Ref EnvironmentType
+              - !Ref AWS::Region
+ 
+## For accessing S3 from AWS resources   ##
+        - Key: ApplicationRoleARN   
+          Value: 'cicd-app-nfsac360-ap-southeast-2-dev'  ##Replace with Actual Role ARN ## For Website Buckets use Jenkins Role ARN
+ 
+##### Below Parameters are required to enable Versioning. Include these parameters in Blueprint only if required #######
+        - Key: Versioning   ## Set true to enable versioning
+          Value: 'false'
+  EC2:
+    Type: 'AWS::ServiceCatalog::CloudFormationProvisionedProduct'
+    Properties:
+      ProductName: EC2
+      ProvisionedProductName: !Sub '${ApplicationName}-${EnvironmentType}-ec2'
+      ProvisioningArtifactName: '1.0'
+      ProvisioningParameters:
+        - Key: EnvironmentName
+          Value: !Sub '${ApplicationName}-${EnvironmentType}'
+        - Key: AvailabilityZone:
+          Value: AZ2
+        - Key: ImageId
+          Value: AmiId
+        - Key: AmiId
+          Value: ami-0b52e0a5cd6517939
+        - Key: InstanceType
+          Value: c5.large
+        - Key: Monitoring
+          Value: true
+        - Key: SecurityGroup:
+          Value: !GetAtt EC2SecurityGroup.Outputs.GroupId ## Refer SecurityGroup Product RunBook for creating Security Groups Blueprint.
+        - Key: RootVolumeSize
+          Value: 60
+        - Key: RootVolumeDeviceName
+          Value: /dev/sda1
+## Sample Block to create Security Group for Load Balancer
+  EC2SecurityGroup:
+    Type: 'AWS::ServiceCatalog::CloudFormationProvisionedProduct'
+    Properties:
+      ProductName: SecurityGroup
+      ProvisionedProductName: !Sub '${ApplicationName}-${EnvironmentType}-ec2-sg'
+      ProvisioningArtifactName: '2.0'
+      ProvisioningParameters:
+        - Key: GroupName
+          Value: !Sub '${ApplicationName}-${EnvironmentType}-ec2-sg'
+        - Key: GroupDescription
+          Value: !Sub '${ApplicationName}-${EnvironmentType}-ec2-sg'
+        - Key: AddCommonOutboundRules
+          Value: 'true'

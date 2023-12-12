@@ -84,7 +84,7 @@ Resources:
         - Key: AmiId
           Value: ami-0b52e0a5cd6517939
         - Key: InstanceType
-          Value: c5.large
+          Value: m2.large
         - Key: Monitoring
           Value: true
         - Key: SecurityGroup:
